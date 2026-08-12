@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoria de Transferências | Tamandaré Tintas</title>
+    
+    <!-- Meta tags, Favicon e Fontes -->
+    <link rel="icon" href="logo.png" type="image/png">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        :root {
+            --gray-light: #f8f9fa; --gray-medium: #dee2e6; --gray-chumbo: #495057; --text-dark: #343a40;
+            --tamandare-red: #fa5252; --wa-green: #25d366; --card-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            --status-pago: #20c997; --status-pendente: #fd7e14; --status-atrasado: #fa5252; --status-aguardando: #868e96;
+            --label-color: #868e96; 
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f3f5; color: var(--text-dark); margin: 0; padding: 0; overflow-x: hidden; }
+        .caixa-alta { text-transform: uppercase; }
+
+        .form-group { display: flex; flex-direction: column; margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 11px; text-transform: uppercase; color: var(--label-color); margin-bottom: 6px; font-weight: 700; }
+        .form-group input, .form-group select { 
+            width: 100%; padding: 12px; border: 1px solid var(--gray-medium); border-radius: 6px; outline: none; font-size: 14px; color: var(--gray-chumbo); font-family: inherit; background-color: var(--gray-light); transition: 0.2s;
+        }
+        .form-group input[type="file"] { background-color: white; padding: 9px; cursor: pointer; }
+        .form-group input:focus, .form-group select:focus { border-color: var(--tamandare-red); background-color: #ffffff; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        
+        .btn { border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; transition: 0.2s; outline: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;}
+        .btn-primary { background: var(--tamandare-red); color: white; } .btn-primary:hover { background: #e03131; } .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-secondary { background: white; border: 1px solid var(--gray-medium); color: var(--gray-chumbo); } .btn-secondary:hover { background: var(--gray-light); }
+        .btn-dark { background: var(--gray-chumbo); color: white; }
+        .btn-success { background: var(--status-pago); color: white; } .btn-success:hover { background: #1db98a; }
+
+        /* Estrutura Principal */
+        #appContainer { display: flex; height: 100vh; }
+        .sidebar { width: 212px; background: white; border-right: 1px solid var(--gray-medium); display: flex; flex-direction: column; flex-shrink: 0; transition: margin-left 0.3s ease; }
+        .sidebar.collapsed { margin-left: -212px; }
+        
+        .sidebar-header { padding: 25px 20px; border-bottom: 1px solid var(--gray-light); text-align: center; display: flex; flex-direction: column; align-items: center; }
+        .sidebar-header img { max-width: 140px; margin-bottom: 5px; }
+        .sidebar-header span { font-size: 11px; color: var(--gray-chumbo); text-transform: uppercase; font-weight: bold; }
+        
+        .nav-links { list-style: none; padding: 10px 0; margin: 0; }
+        .nav-links li { padding: 12px 20px; cursor: pointer; color: var(--label-color); font-size: 14px; font-weight: 500; border-left: 4px solid transparent; }
+        .nav-links li:hover { background: var(--gray-light); color: var(--text-dark); }
+        .nav-links li.active { border-left-color: var(--tamandare-red); color: var(--tamandare-red); background: #fff5f5; }
+        
+        .user-info { margin-top: auto; padding: 20px; border-top: 1px solid var(--gray-light); font-size: 13px; color: var(--label-color); text-align: center; line-height: 1.4; }
+
+        .main-content { flex-grow: 1; padding: 30px; overflow-y: auto; position: relative; transition: width 0.3s ease; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .top-bar h1 { margin: 0; font-weight: 300; color: var(--gray-chumbo); font-size: 24px; }
+        
+        /* Cards Indicadores */
+        .dashboard-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px; }
+        .card-ind { background: white; padding: 20px; border-radius: 12px; box-shadow: var(--card-shadow); border-left: 4px solid var(--gray-medium); }
+        .card-ind.red { border-left-color: var(--tamandare-red); } .card-ind.green { border-left-color: var(--status-pago); } .card-ind.dark { border-left-color: var(--gray-chumbo); } .card-ind.orange { border-left-color: #fd7e14; }
+        .card-ind-title { font-size: 11px; text-transform: uppercase; color: var(--label-color); font-weight: bold; margin-bottom: 5px; }
+        .card-ind-value { font-size: 24px; font-weight: 600; color: var(--gray-chumbo); }
+
+        /* Caixas de Conteúdo */
+        .content-box { background: white; padding: 25px; border-radius: 12px; box-shadow: var(--card-shadow); margin-bottom: 20px;}
+        .box-title { margin: 0 0 20px 0; font-size: 16px; color: var(--gray-chumbo); border-bottom: 1px solid var(--gray-light); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;}
+        
+        /* Tabela */
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 12px; font-size: 11px; text-transform: uppercase; color: var(--label-color); border-bottom: 2px solid var(--gray-light); background: white; }
+        td { padding: 14px 12px; border-bottom: 1px solid var(--gray-light); font-size: 13px; vertical-align: middle; }
+        .linha-tabela:hover { background-color: #fcfcfc; }
+
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block;}
+        .badge-encontrado { background: #e6fcf5; color: var(--status-pago); border: 1px solid #b2f2bb; }
+        .badge-parcial { background: #fff3cd; color: #fd7e14; border: 1px solid #ffec99; }
+        .badge-nao-localizado { background: #fff5f5; color: var(--tamandare-red); border: 1px solid #ffc9c9; }
+
+        .select-status { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--gray-medium); font-size: 11px; font-weight: bold; outline: none; cursor: pointer; text-transform: uppercase; margin-bottom: 5px; }
+        .input-obs { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--gray-medium); font-size: 12px; color: var(--gray-chumbo); }
+
+        /* Modal customizado */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(3px); }
+        .modal-box { background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
+        .modal-box h3 { margin: 0 0 10px 0; color: var(--gray-chumbo); }
+        .modal-box p { color: #6c757d; font-size: 14px; margin-bottom: 25px; line-height: 1.5; }
+        .modal-actions { display: flex; justify-content: center; gap: 10px; }
+
+        .filters-area { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding: 15px; background: var(--gray-light); border-radius: 8px; border: 1px solid var(--gray-medium); }
+        .filters-area label { display: flex; align-items: center; gap: 8px; font-weight: bold; color: var(--gray-chumbo); font-size: 14px; cursor: pointer;}
+        
+        .code-block { display: block; background: #fff; padding: 12px; border: 1px solid var(--gray-medium); border-radius: 4px; font-size: 12px; color: var(--gray-chumbo); font-family: monospace; font-weight: bold; }
+        .manual-section { background: var(--gray-light); padding: 20px; border-radius: 8px; border: 1px solid var(--gray-medium); margin-bottom: 15px; }
+        .manual-section h4 { margin-top: 0; color: var(--tamandare-red); margin-bottom: 10px; }
+        .manual-section p { font-size: 13px; color: var(--gray-chumbo); margin: 0 0 5px 0; }
+        .manual-section small { font-size: 12px; color: var(--label-color); display: block; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <!-- Modal Global -->
+    <div id="customModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modalTitle">Aviso</h3>
+            <p id="modalMessage"></p>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="closeModal()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="appContainer">
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="mainSidebar">
+            <div class="sidebar-header">
+                <img src="logo.png" alt="Logo Tamandaré Tintas" onerror="this.outerHTML='<h2 style=\'margin:0;color:var(--gray-chumbo)\'>AUDITORIA</h2>'">
+                <span>Operações Internas</span>
+            </div>
+            <ul class="nav-links">
+                <li class="active" id="menu-nova" onclick="mostrarNovaConferencia()">Nova Conferência</li>
+                <li id="menu-ajuda" onclick="mostrarAjuda()">Ajuda</li>
+            </ul>
+            <div class="user-info">
+                <strong>Tamandaré Tintas</strong><br>Desde 1996
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+            
+            <div class="top-bar">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <button class="btn btn-secondary" onclick="toggleSidebar()" style="padding: 6px 12px; font-size: 16px;">☰</button>
+                    <h1 id="titulo-pagina">Conferência de Operações entre Lojas</h1>
+                </div>
+            </div>
+
+            <!-- TELA: NOVA CONFERÊNCIA -->
+            <div id="view-nova-conferencia">
+                <!-- Formulário de Carga -->
+                <div class="content-box">
+                    <h3 class="box-title">Upload de Relatórios (GIX)</h3>
+                    
+                    <div class="form-group">
+                        <label>Loja a conferir:</label>
+                        <select id="loja-selecionada" class="caixa-alta">
+                            <option value="VISCONDE">Visconde</option>
+                            <option value="MORADA">Tamandaré Morada</option>
+                            <option value="VINHEDO">Vinhedo</option>
+                            <option value="SALTO">Salto</option>
+                            <option value="ITU">Itu</option>
+                            <option value="CONCEICAO">Conceição</option>
+                            <option value="ELIAS FAUSTO">Elias Fausto</option>
+                            <option value="MARIA JOSE">Maria José</option>
+                            <option value="PAULA LEITE">Paula Leite</option>
+                        </select>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>1. Vendas de outras lojas p/ a atual (Entradas)</label>
+                            <input type="file" id="file-vendas-in" accept=".csv">
+                        </div>
+                        <div class="form-group">
+                            <label>2. Transferências p/ a loja atual (Entradas)</label>
+                            <input type="file" id="file-transf-in" accept=".csv">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>3. Ficha de Estoque (Saídas para Clientes)</label>
+                        <input type="file" id="file-vendas-out" accept=".csv">
+                    </div>
+
+                    <div style="margin-top: 20px; border-top: 1px solid var(--gray-light); padding-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="limparTela()">Limpar</button>
+                        <button class="btn btn-primary" id="btnAnalisar" onclick="iniciarAnalise()">Processar e Analisar Dados</button>
+                    </div>
+                </div>
+
+                <!-- Cards Resumo (Inicialmente escondidos) -->
+                <div id="dashboard-resumo" class="dashboard-cards" style="display: none;">
+                    <div class="card-ind dark">
+                        <div class="card-ind-title">Itens Recebidos</div>
+                        <div class="card-ind-value" id="res-total">0</div>
+                    </div>
+                    <div class="card-ind green">
+                        <div class="card-ind-title">Encontrados</div>
+                        <div class="card-ind-value" id="res-encontrados">0</div>
+                    </div>
+                    <div class="card-ind orange">
+                        <div class="card-ind-title">Correspondência Parcial</div>
+                        <div class="card-ind-value" id="res-parciais">0</div>
+                    </div>
+                    <div class="card-ind red">
+                        <div class="card-ind-title">Não Localizados</div>
+                        <div class="card-ind-value" id="res-nao-localizados">0</div>
+                    </div>
+                </div>
+
+                <!-- Tabela de Resultados -->
+                <div id="container-tabela" class="content-box" style="display: none;">
+                    <div class="box-title">
+                        <span>Resultados da Auditoria</span>
+                        <button class="btn btn-success" onclick="exportarAuditoriaCSV()">⬇ Exportar CSV Final</button>
+                    </div>
+                    
+                    <div class="filters-area">
+                        <label>
+                            <input type="checkbox" id="filtro-conferir" onchange="aplicarFiltros()" style="width: 18px; height: 18px; accent-color: var(--gray-chumbo);">
+                            Mostrar somente o que precisa ser conferido (Não Localizados e Parciais)
+                        </label>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table id="tabela-resultados">
+                            <thead>
+                                <tr>
+                                    <th>Status do Sistema</th>
+                                    <th>Data Entr.</th>
+                                    <th>Documento / Origem</th>
+                                    <th style="width: 25%">Produto</th>
+                                    <th>Qtd In</th>
+                                    <th>Qtd Loc</th>
+                                    <th style="width: 20%">Conferência Manual</th>
+                                </tr>
+                            </thead>
+                            <tbody id="corpo-tabela"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TELA: AJUDA -->
+            <div id="view-ajuda" style="display: none;">
+                <div class="content-box">
+                    <h3 class="box-title">Manual de Extração de Relatórios</h3>
+                    <p style="font-size: 14px; color: var(--gray-chumbo); line-height: 1.6; margin-bottom: 20px;">
+                        Para que a auditoria funcione perfeitamente, é necessário exportar os arquivos do sistema ERP utilizando os caminhos exatos listados abaixo:
+                    </p>
+                    
+                    <div class="manual-section">
+                        <h4>1. Vendas (Entrada)</h4>
+                        <p><strong>Caminho no sistema:</strong></p>
+                        <code class="code-block">
+                            VENDAS ➔ RELATÓRIOS ➔ CLIENTE ➔ CLIENTE + PRODUTO ANALÍTICO POR VENDA
+                        </code>
+                        <small>* Para conferir vendas entre lojas, coloque a loja a ser analisada no campo Cliente.</small>
+                    </div>
+
+                    <div class="manual-section">
+                        <h4>2. Transferência (Entrada)</h4>
+                        <p><strong>Caminho no sistema:</strong></p>
+                        <code class="code-block">
+                            VENDAS ➔ RELATÓRIOS ➔ OUTRAS NOTAS ➔ ANALÍTICO POR PRODUTO
+                        </code>
+                    </div>
+
+                    <div class="manual-section">
+                        <h4>3. Saída (Ficha de Estoque)</h4>
+                        <p><strong>Caminho no sistema:</strong></p>
+                        <code class="code-block">
+                            ESTOQUE E COMPRAS ➔ MOVIMENTO DE ESTOQUE ➔ FICHA DE ESTOQUE
+                        </code>
+                        <small>* Filtrar exclusivamente o movimento: <strong>56 – venda</strong>.</small>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
