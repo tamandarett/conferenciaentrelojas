@@ -229,7 +229,7 @@ function executarCruzamento(entradas, saidas) {
 
         let status = '';
         if (qtdLocalizada === 0) {
-            status = 'NÃO LOCALIZADO';
+            status = 'NAO_LOCALIZADO'; // Chave padronizada (sem acento)
         } else if (qtdLocalizada < entrada.QUANTIDADE) {
             status = 'PARCIAL';
         } else {
@@ -280,7 +280,7 @@ function mudarAba(aba) {
         const txt = btn.innerText.toUpperCase();
         if (aba === 'N_CONFERENCIA' && txt.includes('N CONFERENCIA')) btn.classList.add('active');
         else if (aba === 'DIVERGENCIA' && txt.includes('DIVERGÊNCIA')) btn.classList.add('active');
-        else if (aba === 'NÃO LOCALIZADO' && txt.includes('NÃO LOCALIZADO')) btn.classList.add('active');
+        else if (aba === 'NAO_LOCALIZADO' && txt.includes('NÃO LOCALIZADO')) btn.classList.add('active');
         else if (aba === 'PARCIAL' && txt.includes('PARCIAL')) btn.classList.add('active');
         else if (aba === 'ENCONTRADO' && txt.includes('ENCONTRADOS')) btn.classList.add('active');
         else if (aba === 'TODOS' && txt === 'TODOS') btn.classList.add('active');
@@ -302,7 +302,7 @@ function aplicarFiltros() {
     
     // 2. Filtro do checkbox extra (somente pendentes)
     if (apenasPendentes) {
-        dadosFiltrados = dadosFiltrados.filter(r => r.statusManual === 'NÃO LOCALIZADO' || r.statusManual === 'PARCIAL');
+        dadosFiltrados = dadosFiltrados.filter(r => r.statusManual === 'NAO_LOCALIZADO' || r.statusManual === 'PARCIAL');
     }
     
     renderizarTabela(dadosFiltrados);
@@ -336,7 +336,7 @@ function atualizarDashboard() {
     window.resultadosAuditoria.forEach(r => {
         if (r.statusManual === 'ENCONTRADO') enc++;
         else if (r.statusManual === 'PARCIAL') parc++;
-        else if (r.statusManual === 'NÃO LOCALIZADO') nLoc++;
+        else if (r.statusManual === 'NAO_LOCALIZADO') nLoc++;
     });
 
     document.getElementById('res-total').innerText = t;
@@ -358,11 +358,16 @@ function renderizarTabela(dados) {
     dados.forEach(item => {
         const e = item.entrada;
         
-        // Define a cor da badge com base no status do sistema
+        // Define a cor e texto da badge com base no status do sistema
         let badgeClass = '';
+        let textoStatusSistema = item.statusSistema;
+
         if (item.statusSistema === 'ENCONTRADO') badgeClass = 'badge-encontrado';
         else if (item.statusSistema === 'PARCIAL') badgeClass = 'badge-parcial';
-        else badgeClass = 'badge-nao-localizado';
+        else if (item.statusSistema === 'NAO_LOCALIZADO') {
+            badgeClass = 'badge-nao-localizado';
+            textoStatusSistema = 'NÃO LOCALIZADO'; // Formatação visual com acento
+        }
         
         // Trata a formatação de emp para exibir 02 - Documento
         let empFormatado = '';
@@ -374,7 +379,7 @@ function renderizarTabela(dados) {
         const tr = document.createElement('tr');
         tr.className = 'linha-tabela';
         tr.innerHTML = `
-            <td><span class="status-badge ${badgeClass}">${item.statusSistema}</span></td>
+            <td><span class="status-badge ${badgeClass}">${textoStatusSistema}</span></td>
             <td>
                 <div style="font-size:11px; color:var(--label-color);">${e.TIPO_ORIGEM}</div>
                 <strong style="color:var(--gray-chumbo)">${docExibicao}</strong><br>
@@ -390,7 +395,7 @@ function renderizarTabela(dados) {
                 <select class="select-status" onchange="atualizarStatusManual('${item.id}', this.value)">
                     <option value="ENCONTRADO" ${item.statusManual === 'ENCONTRADO' ? 'selected' : ''}>Encontrado</option>
                     <option value="PARCIAL" ${item.statusManual === 'PARCIAL' ? 'selected' : ''}>Corresp. Parcial</option>
-                    <option value="NÃO LOCALIZADO" ${item.statusManual === 'NÃO LOCALIZADO' ? 'selected' : ''}>Não Localizado</option>
+                    <option value="NAO_LOCALIZADO" ${item.statusManual === 'NAO_LOCALIZADO' ? 'selected' : ''}>Não Localizado</option>
                     <option value="DIVERGENCIA" ${item.statusManual === 'DIVERGENCIA' ? 'selected' : ''}>Divergência</option>
                     <option value="N_CONFERENCIA" ${item.statusManual === 'N_CONFERENCIA' ? 'selected' : ''}>N Conferencia</option>
                 </select>
@@ -432,7 +437,7 @@ function exportarAuditoriaCSV() {
             `"${r.statusSistema}"`,
             r.qtdLocalizada,
             `"${docsVenda}"`,
-            `"${r.statusManual}"`, // Agora exporta o status validado pelo usuário
+            `"${r.statusManual}"`,
             `"${obsLimpa}"`
         ];
 
