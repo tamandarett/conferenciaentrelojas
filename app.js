@@ -1,8 +1,49 @@
 // Variável global para armazenar a análise e permitir filtros sem reprocessamento
 window.resultadosAuditoria = [];
+let abaAtual = 'TODOS';
+const STORAGE_KEY = 'auditoria_lojas_gix_v1';
+
+// Inicialização: Verifica se há dados salvos no Local Storage ao carregar a página
+document.addEventListener("DOMContentLoaded", () => {
+    const dadosSalvos = localStorage.getItem(STORAGE_KEY);
+    if (dadosSalvos) {
+        try {
+            window.resultadosAuditoria = JSON.parse(dadosSalvos);
+            
+            // Se houver dados, oculta o upload, exibe tabelas e carrega a aba "Todos"
+            const uploadWrapper = document.getElementById('upload-wrapper');
+            if(uploadWrapper) uploadWrapper.classList.add('collapsed');
+            
+            document.getElementById('dashboard-resumo').style.display = 'grid';
+            document.getElementById('container-tabela').style.display = 'block';
+            
+            atualizarDashboard();
+            mudarAba('TODOS');
+        } catch (e) {
+            console.error("Erro ao carregar dados locais", e);
+        }
+    }
+});
 
 function toggleSidebar() { 
     document.getElementById('mainSidebar').classList.toggle('collapsed'); 
+}
+
+// Recolhe ou expande o painel de Upload
+function toggleUploadSection() {
+    const wrapper = document.getElementById('upload-wrapper');
+    if (wrapper) wrapper.classList.toggle('collapsed');
+}
+
+// Limpa os dados salvos no navegador e reseta a tela
+function limparStorage() {
+    localStorage.removeItem(STORAGE_KEY);
+    window.resultadosAuditoria = [];
+    limparTela();
+    
+    // Força o painel de upload a abrir novamente
+    const wrapper = document.getElementById('upload-wrapper');
+    if (wrapper) wrapper.classList.remove('collapsed');
 }
 
 // Controle das abas laterais
@@ -40,8 +81,6 @@ function limparTela() {
     
     document.getElementById('dashboard-resumo').style.display = 'none';
     document.getElementById('container-tabela').style.display = 'none';
-    
-    window.resultadosAuditoria = [];
 }
 
 // Remove zeros à esquerda para garantir cruzamento exato
@@ -134,11 +173,9 @@ function lerCSV(file, tipoOrigem) {
                         }
 
                     } else {
-                        // Trata arquivos de entrada
                         let valStr = linha.QUANTIDADE ? linha.QUANTIDADE.toString().replace(',', '.') : "0";
                         linha.QUANTIDADE = parseFloat(valStr) || 0;
                         linha.CÓDIGOPRODUTO = normalizarCodigo(linha.CÓDIGOPRODUTO);
-                        // Captura a loja de origem caso exista
                         linha.EMP = linha.EMP ? linha.EMP.toString().trim() : "";
                         
                         dataNormalizada.push(linha);
@@ -173,7 +210,6 @@ function executarCruzamento(entradas, saidas) {
     });
 
     const resultados = [];
-    const resumo = { total: entradas.length, encontrado: 0, parcial: 0, naoLocalizado: 0 };
     const TRES_DIAS_MS = 3 * 24 * 60 * 60 * 1000; 
 
     entradas.forEach(entrada => {
@@ -194,50 +230,119 @@ function executarCruzamento(entradas, saidas) {
         let status = '';
         if (qtdLocalizada === 0) {
             status = 'NÃO LOCALIZADO';
-            resumo.naoLocalizado++;
         } else if (qtdLocalizada < entrada.QUANTIDADE) {
             status = 'PARCIAL';
-            resumo.parcial++;
         } else {
             status = 'ENCONTRADO';
-            resumo.encontrado++;
         }
 
         resultados.push({
             id: Math.random().toString(36).substring(2, 10),
             entrada: entrada,
-            status: status,
+            statusSistema: status,         // Status original apontado pelo sistema
+            statusManual: status,          // Status controlável via dropdown (inicia igual ao do sistema)
             qtdRecebida: entrada.QUANTIDADE,
             qtdLocalizada: qtdLocalizada,
             vendasVinculadas: vendasCompativeis,
-            statusConferencia: 'Pendente',
             observacao: ''
         });
     });
 
+    // Atualiza a variável global e salva no LocalStorage (substituindo dados antigos)
     window.resultadosAuditoria = resultados;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(window.resultadosAuditoria));
     
-    document.getElementById('res-total').innerText = resumo.total;
-    document.getElementById('res-encontrados').innerText = resumo.encontrado;
-    document.getElementById('res-parciais').innerText = resumo.parcial;
-    document.getElementById('res-nao-localizados').innerText = resumo.naoLocalizado;
+    // Atualiza interface
+    atualizarDashboard();
+    
+    const uploadWrapper = document.getElementById('upload-wrapper');
+    if(uploadWrapper) uploadWrapper.classList.add('collapsed');
     
     document.getElementById('dashboard-resumo').style.display = 'grid';
     document.getElementById('container-tabela').style.display = 'block';
     
-    document.getElementById('filtro-conferir').checked = false;
-    renderizarTabela(resultados);
+    if (document.getElementById('filtro-conferir')) {
+        document.getElementById('filtro-conferir').checked = false;
+    }
+
+    // Retorna para a aba TODOS sempre que rodar um novo arquivo
+    mudarAba('TODOS');
+}
+
+// === CONTROLE DE ABAS E FILTROS ===
+function mudarAba(aba) {
+    abaAtual = aba;
+    
+    // Ajusta o visual dos botões da aba
+    const botoes = document.querySelectorAll('.tab-btn');
+    botoes.forEach(btn => {
+        btn.classList.remove('active');
+        const txt = btn.innerText.toUpperCase();
+        if (aba === 'N_CONFERENCIA' && txt.includes('N CONFERENCIA')) btn.classList.add('active');
+        else if (aba === 'DIVERGENCIA' && txt.includes('DIVERGÊNCIA')) btn.classList.add('active');
+        else if (aba === 'NÃO LOCALIZADO' && txt.includes('NÃO LOCALIZADO')) btn.classList.add('active');
+        else if (aba === 'PARCIAL' && txt.includes('PARCIAL')) btn.classList.add('active');
+        else if (aba === 'ENCONTRADO' && txt.includes('ENCONTRADOS')) btn.classList.add('active');
+        else if (aba === 'TODOS' && txt === 'TODOS') btn.classList.add('active');
+    });
+
+    aplicarFiltros();
 }
 
 function aplicarFiltros() {
-    const apenasPendentes = document.getElementById('filtro-conferir').checked;
+    const chkConferir = document.getElementById('filtro-conferir');
+    const apenasPendentes = chkConferir ? chkConferir.checked : false;
+    
     let dadosFiltrados = window.resultadosAuditoria;
     
+    // 1. Filtro da aba atual
+    if (abaAtual !== 'TODOS') {
+        dadosFiltrados = dadosFiltrados.filter(r => r.statusManual === abaAtual);
+    }
+    
+    // 2. Filtro do checkbox extra (somente pendentes)
     if (apenasPendentes) {
-        dadosFiltrados = dadosFiltrados.filter(r => r.status === 'NÃO LOCALIZADO' || r.status === 'PARCIAL');
+        dadosFiltrados = dadosFiltrados.filter(r => r.statusManual === 'NÃO LOCALIZADO' || r.statusManual === 'PARCIAL');
     }
     
     renderizarTabela(dadosFiltrados);
+}
+
+// === INTERAÇÕES MANUAIS (Dropdown e Input) ===
+function atualizarStatusManual(id, novoValor) {
+    const item = window.resultadosAuditoria.find(r => r.id === id);
+    if (item) {
+        item.statusManual = novoValor;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(window.resultadosAuditoria));
+        
+        atualizarDashboard();
+        aplicarFiltros(); // Re-aplica os filtros e tira o item da aba atual se necessário
+    }
+}
+
+function atualizarObs(id, valor) {
+    const item = window.resultadosAuditoria.find(r => r.id === id);
+    if (item) {
+        item.observacao = valor;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(window.resultadosAuditoria));
+    }
+}
+
+// Atualiza contadores do topo baseado no status atual de cada item
+function atualizarDashboard() {
+    let t = window.resultadosAuditoria.length;
+    let enc = 0, parc = 0, nLoc = 0;
+
+    window.resultadosAuditoria.forEach(r => {
+        if (r.statusManual === 'ENCONTRADO') enc++;
+        else if (r.statusManual === 'PARCIAL') parc++;
+        else if (r.statusManual === 'NÃO LOCALIZADO') nLoc++;
+    });
+
+    document.getElementById('res-total').innerText = t;
+    if(document.getElementById('res-encontrados')) document.getElementById('res-encontrados').innerText = enc;
+    if(document.getElementById('res-parciais')) document.getElementById('res-parciais').innerText = parc;
+    if(document.getElementById('res-nao-localizados')) document.getElementById('res-nao-localizados').innerText = nLoc;
 }
 
 function renderizarTabela(dados) {
@@ -246,16 +351,17 @@ function renderizarTabela(dados) {
     tbody.innerHTML = '';
     
     if (dados.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--label-color);">Nenhuma operação encontrada com os filtros atuais.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--label-color);">Nenhuma operação encontrada nesta aba ou com os filtros atuais.</td></tr>';
         return;
     }
 
     dados.forEach(item => {
         const e = item.entrada;
         
+        // Define a cor da badge com base no status do sistema
         let badgeClass = '';
-        if (item.status === 'ENCONTRADO') badgeClass = 'badge-encontrado';
-        else if (item.status === 'PARCIAL') badgeClass = 'badge-parcial';
+        if (item.statusSistema === 'ENCONTRADO') badgeClass = 'badge-encontrado';
+        else if (item.statusSistema === 'PARCIAL') badgeClass = 'badge-parcial';
         else badgeClass = 'badge-nao-localizado';
         
         // Trata a formatação de emp para exibir 02 - Documento
@@ -268,22 +374,25 @@ function renderizarTabela(dados) {
         const tr = document.createElement('tr');
         tr.className = 'linha-tabela';
         tr.innerHTML = `
-            <td><span class="status-badge ${badgeClass}">${item.status}</span></td>
-            <td><strong>${e.DATAEMISSÃO || ''}</strong></td>
-            <td><div style="font-size:11px; color:var(--label-color);">${e.TIPO_ORIGEM}</div><strong style="color:var(--gray-chumbo)">${docExibicao}</strong></td>
+            <td><span class="status-badge ${badgeClass}">${item.statusSistema}</span></td>
+            <td>
+                <div style="font-size:11px; color:var(--label-color);">${e.TIPO_ORIGEM}</div>
+                <strong style="color:var(--gray-chumbo)">${docExibicao}</strong><br>
+                <small>${e.DATAEMISSÃO || ''}</small>
+            </td>
             <td>
                 <strong style="color:var(--tamandare-red)">${e.CÓDIGOPRODUTO}</strong><br>
                 <small style="color:var(--label-color)">${e['DESCRIÇÃO DO PRODUTO'] || ''}</small>
             </td>
             <td style="font-weight: bold; font-size: 15px; color: var(--gray-chumbo); text-align: center;">${item.qtdRecebida}</td>
-            <td style="font-weight: bold; font-size: 15px; color: var(--gray-chumbo); text-align: center;">${item.qtdLocalizada}</td>
+            <td style="font-weight: bold; font-size: 15px; color: ${item.qtdLocalizada === item.qtdRecebida ? 'var(--status-pago)' : 'var(--tamandare-red)'}; text-align: center;">${item.qtdLocalizada}</td>
             <td>
-                <select class="select-status" onchange="atualizarStatusConferencia('${item.id}', this.value)" style="background: var(--gray-light);">
-                    <option value="Pendente" ${item.statusConferencia === 'Pendente' ? 'selected' : ''}>Pendente</option>
-                    <option value="Correto" ${item.statusConferencia === 'Correto' ? 'selected' : ''}>Correto</option>
-                    <option value="Lançamento Encontrado" ${item.statusConferencia === 'Lançamento Encontrado' ? 'selected' : ''}>Lanç. Encontrado</option>
-                    <option value="Problema" ${item.statusConferencia === 'Problema' ? 'selected' : ''}>Problema / Divergência</option>
-                    <option value="Justificativa" ${item.statusConferencia === 'Justificativa' ? 'selected' : ''}>Justificativa</option>
+                <select class="select-status" onchange="atualizarStatusManual('${item.id}', this.value)">
+                    <option value="ENCONTRADO" ${item.statusManual === 'ENCONTRADO' ? 'selected' : ''}>Encontrado</option>
+                    <option value="PARCIAL" ${item.statusManual === 'PARCIAL' ? 'selected' : ''}>Corresp. Parcial</option>
+                    <option value="NÃO LOCALIZADO" ${item.statusManual === 'NÃO LOCALIZADO' ? 'selected' : ''}>Não Localizado</option>
+                    <option value="DIVERGENCIA" ${item.statusManual === 'DIVERGENCIA' ? 'selected' : ''}>Divergência</option>
+                    <option value="N_CONFERENCIA" ${item.statusManual === 'N_CONFERENCIA' ? 'selected' : ''}>N Conferencia</option>
                 </select>
                 <input type="text" class="input-obs" placeholder="Observação interna..." value="${item.observacao}" onchange="atualizarObs('${item.id}', this.value)">
             </td>
@@ -292,23 +401,13 @@ function renderizarTabela(dados) {
     });
 }
 
-function atualizarStatusConferencia(id, valor) {
-    const item = window.resultadosAuditoria.find(r => r.id === id);
-    if (item) item.statusConferencia = valor;
-}
-
-function atualizarObs(id, valor) {
-    const item = window.resultadosAuditoria.find(r => r.id === id);
-    if (item) item.observacao = valor;
-}
-
 function exportarAuditoriaCSV() {
     if (!window.resultadosAuditoria || window.resultadosAuditoria.length === 0) {
         return customAlert("Não há dados para exportar.");
     }
 
     const dropdownLoja = document.getElementById('loja-selecionada');
-    const lojaSelecionada = dropdownLoja.options[dropdownLoja.selectedIndex].text;
+    const lojaSelecionada = dropdownLoja ? dropdownLoja.options[dropdownLoja.selectedIndex].text : 'Loja';
     
     let csvContent = "LOJA_ANALISADA;TIPO_ENTRADA;DATA_ENTRADA;DOCUMENTO_ENTRADA;CODIGO_PRODUTO;DESCRICAO;QTD_RECEBIDA;STATUS_SISTEMA;QTD_LOCALIZADA;DOCS_SAIDA;STATUS_MANUAL;OBSERVACAO\n";
 
@@ -330,10 +429,10 @@ function exportarAuditoriaCSV() {
             `"${e.CÓDIGOPRODUTO}"`,
             `"${descLimpa}"`,
             r.qtdRecebida,
-            `"${r.status}"`,
+            `"${r.statusSistema}"`,
             r.qtdLocalizada,
             `"${docsVenda}"`,
-            `"${r.statusConferencia}"`,
+            `"${r.statusManual}"`, // Agora exporta o status validado pelo usuário
             `"${obsLimpa}"`
         ];
 
